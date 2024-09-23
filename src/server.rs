@@ -11,19 +11,19 @@ use crate::services::{
 };
 
 pub struct Server {
-    user_service: UserService,
-    asset_service: AssetService,
-    wallet_service: WalletService,
-    transaction_service: TransactionService,
+    user_repository: UserRepository,
+    asset_repository: AssetRepository,
+    wallet_repository: WalletRepository,
+    transaction_repository: TransactionRepository,
 }
 
 impl Server {
-    pub fn new() -> Self {
+    pub fn new(db_path: &Path) -> Self {
         Server {
-            user_service: UserService::new(),
-            asset_service: AssetService::new(),
-            wallet_service: WalletService::new(),
-            transaction_service: TransactionService::new(),
+            user_repository: UserRepository::new(db_path),
+            asset_repository: AssetRepository::new(db_path),
+            wallet_repository: WalletRepository::new(db_path),
+            transaction_repository: TransactionRepository::new(db_path),
         }
     }
 

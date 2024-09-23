@@ -1,45 +1,71 @@
-use std::sync::{Arc, Mutex};
+use rusqlite::{params, Connection, Result};
 use uuid::Uuid;
 use crate::models::asset::Asset;
+use std::path::Path;
 
-#[derive(Clone)]
 pub struct AssetRepository {
-    assets: Arc<Mutex<Vec<Asset>>>,
+    db_path: Box<Path>,
 }
 
 impl AssetRepository {
-    pub fn new() -> Self {
+    pub fn new(db_path: &Path) -> Self {
         AssetRepository {
-            assets: Arc::new(Mutex::new(Vec::new())),
+            db_path: db_path.into(),
         }
     }
 
-    pub fn add_asset(&self, asset: Asset) -> Result<(), String> {
-        let mut assets = self.assets.lock().unwrap();
-        if assets.iter().any(|a| a.symbol == asset.symbol) {
-            return Err("Asset symbol already exists".to_string());
-        }
-        assets.push(asset);
+    pub fn add_asset(&self, asset: &Asset) -> Result<(), rusqlite::Error> {
+        let conn = Connection::open(&self.db_path)?;
+        conn.execute(
+            "INSERT INTO assets (id, name, symbol, price) VALUES (?1, ?2, ?3, ?4)",
+            params![
+                asset.id.to_string(),
+                asset.name,
+                asset.symbol,
+                asset.price
+            ],
+        )?;
         Ok(())
     }
 
-    pub fn get_asset_by_id(&self, id: &Uuid) -> Option<Asset> {
-        let assets = self.assets.lock().unwrap();
-        assets.iter().find(|a| a.id == *id).cloned()
+    pub fn get_asset_by_id(&self, id: &Uuid) -> Result<Option<Asset>, rusqlite::Error> {
+        let conn = Connection::open(&self.db_path)?;
+        let mut stmt = conn.prepare("SELECT * FROM assets WHERE id = ?1")?;
+        let asset_iter = stmt.query_map(params![id.to_string()], |row| {
+            Ok(Asset {
+                id: Uuid::parse_str(&row.get::<_, String>(0)?).unwrap(),
+                name: row.get(1)?,
+                symbol: row.get(2)?,
+                price: row.get(3)?,
+            })
+        })?;
+
+        let asset = asset_iter.filter_map(Result::ok).next();
+        Ok(asset)
     }
 
-    pub fn get_all_assets(&self) -> Vec<Asset> {
-        let assets = self.assets.lock().unwrap();
-        assets.clone()
+    pub fn get_all_assets(&self) -> Result<Vec<Asset>, rusqlite::Error> {
+        let conn = Connection::open(&self.db_path)?;
+        let mut stmt = conn.prepare("SELECT * FROM assets")?;
+        let asset_iter = stmt.query_map([], |row| {
+            Ok(Asset {
+                id: Uuid::parse_str(&row.get::<_, String>(0)?).unwrap(),
+                name: row.get(1)?,
+                symbol: row.get(2)?,
+                price: row.get(3)?,
+            })
+        })?;
+
+        let assets: Result<Vec<Asset>, _> = asset_iter.collect();
+        assets
     }
 
-    pub fn update_asset_price(&self, id: &Uuid, new_price: f64) -> Result<(), String> {
-        let mut assets = self.assets.lock().unwrap();
-        if let Some(asset) = assets.iter_mut().find(|a| a.id == *id) {
-            asset.price = new_price;
-            Ok(())
-        } else {
-            Err("Asset not found".to_string())
-        }
+    pub fn update_asset_price(&self, id: &Uuid, new_price: f64) -> Result<(), rusqlite::Error> {
+        let conn = Connection::open(&self.db_path)?;
+        conn.execute(
+            "UPDATE assets SET price = ?1 WHERE id = ?2",
+            params![new_price, id.to_string()],
+        )?;
+        Ok(())
     }
 }
